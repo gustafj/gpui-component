@@ -67,7 +67,7 @@ impl Render for DragPanel {
 pub struct TabPanel {
     focus_handle: FocusHandle,
     dock_area: WeakEntity<DockArea>,
-    /// The stock_panel can be None, if is None, that means the panels can't be split or move
+    /// The stack_panel can be None, if is None, that means the panels can't be split or move
     stack_panel: Option<WeakEntity<StackPanel>>,
     pub(crate) panels: Vec<Arc<dyn PanelView>>,
     pub(crate) active_ix: usize,

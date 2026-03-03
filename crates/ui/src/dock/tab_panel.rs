@@ -348,11 +348,13 @@ impl TabPanel {
         cx: &mut Context<Self>,
     ) {
         panel.on_removed(window, cx);
-        let panel_view = panel.view();
-        self.panels.retain(|p| p.view() != panel_view);
+        let panel_entity_id = panel.view().entity_id();
+        self.panels
+            .retain(|p| p.view().entity_id() != panel_entity_id);
         if self.active_ix >= self.panels.len() {
             self.set_active_ix(self.panels.len().saturating_sub(1), window, cx)
         }
+        cx.notify();
     }
 
     /// Check to remove self from the parent StackPanel, if there is no panel left

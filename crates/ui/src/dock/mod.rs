@@ -215,6 +215,19 @@ impl DockItem {
         self
     }
 
+    /// Set the fallback panel to render when no panels are present, only valid for [`DockItem::Tabs`].
+    ///
+    /// When set, allows closing/dragging the last panel.
+    /// Pass `None` to clear the fallback panel.
+    pub fn fallback(self, panel: impl Into<Option<Arc<dyn PanelView>>>, cx: &mut App) -> Self {
+        if let Self::Tabs { ref view, .. } = self {
+            view.update(cx, |tab_panel, _cx| {
+                tab_panel.fallback(panel);
+            });
+        }
+        self
+    }
+
     /// Create DockItem::Split with given split layout.
     pub fn split(
         axis: Axis,

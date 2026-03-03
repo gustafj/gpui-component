@@ -72,9 +72,10 @@ pub struct TabPanel {
     pub(crate) panels: Vec<Arc<dyn PanelView>>,
     pub(crate) active_ix: usize,
     /// If this is true, the Panel closable will follow the active panel's closable,
-    /// otherwise this TabPanel will not able to close
+    /// otherwise this TabPanel will not able to close.
     ///
     /// This is used for Dock to limit the last TabPanel not able to close, see [`super::Dock::new`].
+    /// Note: When a fallback panel is set, the last panel can still be closed.
     pub(crate) closable: bool,
 
     tab_bar_scroll_handle: ScrollHandle,
@@ -91,6 +92,10 @@ pub struct TabPanel {
     suffix: Option<Box<dyn Fn(&mut Window, &mut App) -> AnyElement + 'static>>,
     /// Whether to show the built-in toolbar ("..." menu + zoom buttons).
     show_toolbar: bool,
+    /// Fallback panel to render when no panels are present.
+    ///
+    /// When set, allows closing/dragging the last panel.
+    fallback_panel: Option<Arc<dyn PanelView>>,
 }
 
 impl Panel for TabPanel {
@@ -109,7 +114,8 @@ impl Panel for TabPanel {
             return false;
         }
 
-        // 1. When is the final panel in the dock, it will not able to close.
+        // 1. When is the final panel in the dock, it will not able to close
+        //    (unless a fallback panel is set, which allows closing the last panel).
         // 2. When is in the Tiles, it will always able to close (by active panel state).
         if !self.draggable(cx) && !self.in_tiles {
             return false;
@@ -188,6 +194,7 @@ impl TabPanel {
             prefix: None,
             suffix: None,
             show_toolbar: true,
+            fallback_panel: None,
         }
     }
 
@@ -217,6 +224,19 @@ impl TabPanel {
     /// Hide the built-in toolbar ("..." menu and zoom buttons).
     pub fn hide_toolbar(&mut self) {
         self.show_toolbar = false;
+    }
+
+    /// Set the fallback panel to render when no panels are present.
+    ///
+    /// When set, this also allows closing and dragging the last panel.
+    /// Pass `None` to clear the fallback panel.
+    pub fn fallback(&mut self, panel: impl Into<Option<Arc<dyn PanelView>>>) {
+        self.fallback_panel = panel.into();
+    }
+
+    /// Returns true if a fallback panel is configured.
+    fn can_be_empty(&self) -> bool {
+        self.fallback_panel.is_some()
     }
 
     /// Return current active_panel View
@@ -454,9 +474,10 @@ impl TabPanel {
 
     /// Return true if the tab panel is draggable.
     ///
-    /// E.g. if the parent and self only have one panel, it is not draggable.
+    /// E.g. if the parent and self only have one panel, it is not draggable,
+    /// unless a fallback panel is configured.
     fn draggable(&self, cx: &App) -> bool {
-        !self.is_locked(cx) && !self.is_last_panel(cx)
+        !self.is_locked(cx) && (self.can_be_empty() || !self.is_last_panel(cx))
     }
 
     /// Return true if the tab panel is droppable.
@@ -658,37 +679,47 @@ impl TabPanel {
         let panel_style = dock_area.read(cx).panel_style;
         let visible_panels = self.visible_panels(cx).collect::<Vec<_>>();
 
-        if visible_panels.len() == 1 && panel_style == PanelStyle::default() {
-            let panel = visible_panels.get(0).unwrap();
+        // Single panel or fallback: use simple h_flex title bar (not TabBar)
+        let is_fallback = visible_panels.is_empty();
+        let display_panel: Option<Arc<dyn PanelView>> = visible_panels
+            .get(0)
+            .cloned()
+            .or_else(|| self.fallback_panel.clone());
 
-            if !panel.visible(cx) {
-                return div().into_any_element();
-            }
+        // Single panel requires default style; fallback always uses simple title bar
+        let use_simple_title_bar =
+            (visible_panels.len() == 1 && panel_style == PanelStyle::default()) || is_fallback;
 
-            let title_style = panel.title_style(cx);
+        if use_simple_title_bar {
+            if let Some(panel) = display_panel {
+                if !is_fallback && !panel.visible(cx) {
+                    return div().into_any_element();
+                }
 
-            return h_flex()
-                .justify_between()
-                .line_height(rems(1.0))
-                .h(px(30.))
-                .py_2()
-                .pl_3()
-                .pr_2()
-                .when(left_dock_button.is_some(), |this| this.pl_2())
-                .when(right_dock_button.is_some(), |this| this.pr_2())
-                .when_some(title_style, |this, theme| {
-                    this.bg(theme.background).text_color(theme.foreground)
-                })
-                .when(has_extend_dock_button, |this| {
-                    this.child(
-                        h_flex()
-                            .flex_shrink_0()
-                            .mr_1()
-                            .gap_1()
-                            .children(left_dock_button)
-                            .children(bottom_dock_button),
-                    )
-                })
+                let title_style = panel.title_style(cx);
+
+                return h_flex()
+                    .justify_between()
+                    .line_height(rems(1.0))
+                    .h(px(30.))
+                    .py_2()
+                    .pl_3()
+                    .pr_2()
+                    .when(left_dock_button.is_some(), |this| this.pl_2())
+                    .when(right_dock_button.is_some(), |this| this.pr_2())
+                    .when_some(title_style, |this, theme| {
+                        this.bg(theme.background).text_color(theme.foreground)
+                    })
+                    .when(has_extend_dock_button, |this| {
+                        this.child(
+                            h_flex()
+                                .flex_shrink_0()
+                                .mr_1()
+                                .gap_1()
+                                .children(left_dock_button)
+                                .children(bottom_dock_button),
+                        )
+                    })
                 .children(self.prefix.as_ref().map(|f| f(window, cx)))
                 .children(panel.title_prefix(window, cx))
                 .child(
@@ -700,7 +731,7 @@ impl TabPanel {
                         .text_ellipsis()
                         .whitespace_nowrap()
                         .child(panel.title(window, cx))
-                        .when(state.draggable, |this| {
+                        .when(!is_fallback && state.draggable, |this| {
                             this.on_drag(
                                 DragPanel {
                                     panel: panel.clone(),
@@ -720,12 +751,13 @@ impl TabPanel {
                         .flex_shrink_0()
                         .mr_1()
                         .gap_1()
-                        .when(self.show_toolbar, |this| {
+                        .when(!is_fallback && self.show_toolbar, |this| {
                             this.child(self.render_toolbar(&state, window, cx))
                         })
                         .children(right_dock_button),
                 )
                 .into_any_element();
+            }
         }
 
         if let Some(panel_ix) = self.pending_scroll_to_ix.take() {
@@ -901,6 +933,34 @@ impl TabPanel {
         }
 
         let Some(active_panel) = state.active_panel.as_ref() else {
+            if let Some(fallback) = &self.fallback_panel {
+                return v_flex()
+                    .id("fallback-panel")
+                    .group("")
+                    .flex_1()
+                    .child(
+                        div()
+                            .id("fallback-content")
+                            .overflow_y_scroll()
+                            .overflow_x_hidden()
+                            .flex_1()
+                            .child(
+                                fallback
+                                    .view()
+                                    .cached(StyleRefinement::default().absolute().size_full()),
+                            ),
+                    )
+                    .when(state.droppable, |this| {
+                        this.drag_over::<DragPanel>(|this, _, _, cx| {
+                            this.bg(cx.theme().drop_target)
+                        })
+                        .on_drop(cx.listener(|this, drag: &DragPanel, window, cx| {
+                            this.will_split_placement = None;
+                            this.on_drop(drag, None, true, window, cx)
+                        }))
+                    })
+                    .into_any_element();
+            }
             return Empty {}.into_any_element();
         };
 

@@ -145,6 +145,22 @@ impl Dock {
         cx.notify();
     }
 
+    /// Set the fallback panel to render when no panels are present in this dock.
+    ///
+    /// When set, this also allows closing and dragging the last panel.
+    /// Pass `None` to clear the fallback panel.
+    pub fn fallback(
+        &mut self,
+        panel: impl Into<Option<Arc<dyn PanelView>>>,
+        cx: &mut Context<Self>,
+    ) {
+        if let DockItem::Tabs { view, .. } = &self.panel {
+            view.update(cx, |tab_panel, _cx| {
+                tab_panel.fallback(panel);
+            });
+        }
+    }
+
     pub(super) fn from_state(
         dock_area: WeakEntity<DockArea>,
         placement: DockPlacement,

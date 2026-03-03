@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use gpui::{
-    Anchor, App, AppContext, Context, DismissEvent, Div, DragMoveEvent, Empty, Entity,
+    Anchor, AnyElement, App, AppContext, Context, DismissEvent, Div, DragMoveEvent, Empty, Entity,
     EventEmitter, FocusHandle, Focusable, InteractiveElement as _, IntoElement, ParentElement,
     Pixels, Render, ScrollHandle, SharedString, StatefulInteractiveElement, StyleRefinement,
     Styled, WeakEntity, Window, div, prelude::FluentBuilder, px, relative, rems,
@@ -85,6 +85,12 @@ pub struct TabPanel {
     will_split_placement: Option<Placement>,
     /// Is TabPanel used in Tiles.
     in_tiles: bool,
+    /// Dock-level prefix element builder.
+    prefix: Option<Box<dyn Fn(&mut Window, &mut App) -> AnyElement + 'static>>,
+    /// Dock-level suffix element builder.
+    suffix: Option<Box<dyn Fn(&mut Window, &mut App) -> AnyElement + 'static>>,
+    /// Whether to show the built-in toolbar ("..." menu + zoom buttons).
+    show_toolbar: bool,
 }
 
 impl Panel for TabPanel {
@@ -179,6 +185,9 @@ impl TabPanel {
             collapsed: false,
             closable: true,
             in_tiles: false,
+            prefix: None,
+            suffix: None,
+            show_toolbar: true,
         }
     }
 
@@ -189,6 +198,25 @@ impl TabPanel {
 
     pub(super) fn set_parent(&mut self, view: WeakEntity<StackPanel>) {
         self.stack_panel = Some(view);
+    }
+
+    /// Set a dock-level prefix element.
+    ///
+    /// Always shown in the prefix area regardless of which panel is active.
+    pub fn prefix(&mut self, builder: impl Fn(&mut Window, &mut App) -> AnyElement + 'static) {
+        self.prefix = Some(Box::new(builder));
+    }
+
+    /// Set a dock-level suffix element.
+    ///
+    /// Always shown in the suffix area regardless of which panel is active.
+    pub fn suffix(&mut self, builder: impl Fn(&mut Window, &mut App) -> AnyElement + 'static) {
+        self.suffix = Some(Box::new(builder));
+    }
+
+    /// Hide the built-in toolbar ("..." menu and zoom buttons).
+    pub fn hide_toolbar(&mut self) {
+        self.show_toolbar = false;
     }
 
     /// Return current active_panel View
@@ -661,6 +689,8 @@ impl TabPanel {
                             .children(bottom_dock_button),
                     )
                 })
+                .children(self.prefix.as_ref().map(|f| f(window, cx)))
+                .children(panel.title_prefix(window, cx))
                 .child(
                     div()
                         .id("tab")
@@ -684,12 +714,15 @@ impl TabPanel {
                         }),
                 )
                 .children(panel.title_suffix(window, cx))
+                .children(self.suffix.as_ref().map(|f| f(window, cx)))
                 .child(
                     h_flex()
                         .flex_shrink_0()
-                        .ml_1()
+                        .mr_1()
                         .gap_1()
-                        .child(self.render_toolbar(&state, window, cx))
+                        .when(self.show_toolbar, |this| {
+                            this.child(self.render_toolbar(&state, window, cx))
+                        })
                         .children(right_dock_button),
                 )
                 .into_any_element();
@@ -709,9 +742,15 @@ impl TabPanel {
 
         let tabs_count = self.panels.len();
 
+        let dock_prefix = self.prefix.as_ref().map(|f| f(window, cx));
+        let title_prefix = self
+            .active_panel(cx)
+            .and_then(|panel| panel.title_prefix(window, cx));
+        let has_prefix = has_extend_dock_button || dock_prefix.is_some() || title_prefix.is_some();
+
         TabBar::new("tab-bar")
             .track_scroll(&self.tab_bar_scroll_handle)
-            .when(has_extend_dock_button, |this| {
+            .when(has_prefix, |this| {
                 this.prefix(
                     h_flex()
                         .items_center()
@@ -725,7 +764,9 @@ impl TabPanel {
                         .bg(cx.theme().tab_bar)
                         .px_2()
                         .children(left_dock_button)
-                        .children(bottom_dock_button),
+                        .children(bottom_dock_button)
+                        .children(dock_prefix)
+                        .children(title_prefix),
                 )
             })
             .children(self.panels.iter().enumerate().filter_map(|(ix, panel)| {
@@ -744,7 +785,7 @@ impl TabPanel {
                 Some(
                     Tab::new()
                         .ix(ix)
-                        .tab_bar_prefix(has_extend_dock_button)
+                        .tab_bar_prefix(has_prefix)
                         .map(|this| {
                             if let Some(tab_name) = panel.tab_name(cx) {
                                 this.child(tab_name)
@@ -791,7 +832,9 @@ impl TabPanel {
                                     },
                                 ))
                             })
-                        }),
+                        })
+                        .when_some(panel.prefix(window, cx), |this, prefix| this.prefix(prefix))
+                        .when_some(panel.suffix(window, cx), |this, suffix| this.suffix(suffix)),
                 )
             }))
             .last_empty_space(
@@ -837,7 +880,10 @@ impl TabPanel {
                             self.active_panel(cx)
                                 .and_then(|panel| panel.title_suffix(window, cx)),
                         )
-                        .child(self.render_toolbar(state, window, cx))
+                        .children(self.suffix.as_ref().map(|f| f(window, cx)))
+                        .when(self.show_toolbar, |this| {
+                            this.child(self.render_toolbar(state, window, cx))
+                        })
                         .when_some(right_dock_button, |this, btn| this.child(btn)),
                 )
             })

@@ -75,14 +75,39 @@ pub trait Panel: EventEmitter<PanelEvent> + Render + Focusable {
         None
     }
 
+    /// The prefix of the panel title, default is `None`.
+    ///
+    /// This is used to add a prefix element to the panel title bar area.
+    fn title_prefix(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Option<impl IntoElement> {
+        None::<gpui::Div>
+    }
+
     /// The suffix of the panel title, default is `None`.
     ///
-    /// This is used to add a suffix element to the panel title.
+    /// This is used to add a suffix element to the panel title bar area.
     fn title_suffix(
         &mut self,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Option<impl IntoElement> {
+        None::<gpui::Div>
+    }
+
+    /// The prefix of the tab label, default is `None`.
+    ///
+    /// This is used to add a prefix element to the tab label itself.
+    fn prefix(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Option<impl IntoElement> {
+        None::<gpui::Div>
+    }
+
+    /// The suffix of the tab label, default is `None`.
+    ///
+    /// This is used to add a suffix element to the tab label itself.
+    fn suffix(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Option<impl IntoElement> {
         None::<gpui::Div>
     }
 
@@ -170,7 +195,10 @@ pub trait PanelView: 'static + Send + Sync {
     fn panel_id(&self, cx: &App) -> EntityId;
     fn tab_name(&self, cx: &App) -> Option<SharedString>;
     fn title(&self, window: &mut Window, cx: &mut App) -> AnyElement;
+    fn title_prefix(&self, window: &mut Window, cx: &mut App) -> Option<AnyElement>;
     fn title_suffix(&self, window: &mut Window, cx: &mut App) -> Option<AnyElement>;
+    fn prefix(&self, window: &mut Window, cx: &mut App) -> Option<AnyElement>;
+    fn suffix(&self, window: &mut Window, cx: &mut App) -> Option<AnyElement>;
     fn title_style(&self, cx: &App) -> Option<TitleStyle>;
     fn closable(&self, cx: &App) -> bool;
     fn zoomable(&self, cx: &App) -> Option<PanelControl>;
@@ -204,10 +232,29 @@ impl<T: Panel> PanelView for Entity<T> {
         self.update(cx, |this, cx| this.title(window, cx).into_any_element())
     }
 
+    fn title_prefix(&self, window: &mut Window, cx: &mut App) -> Option<AnyElement> {
+        self.update(cx, |this, cx| {
+            this.title_prefix(window, cx)
+                .map(|el| el.into_any_element())
+        })
+    }
+
     fn title_suffix(&self, window: &mut Window, cx: &mut App) -> Option<AnyElement> {
         self.update(cx, |this, cx| {
             this.title_suffix(window, cx)
                 .map(|el| el.into_any_element())
+        })
+    }
+
+    fn prefix(&self, window: &mut Window, cx: &mut App) -> Option<AnyElement> {
+        self.update(cx, |this, cx| {
+            this.prefix(window, cx).map(|el| el.into_any_element())
+        })
+    }
+
+    fn suffix(&self, window: &mut Window, cx: &mut App) -> Option<AnyElement> {
+        self.update(cx, |this, cx| {
+            this.suffix(window, cx).map(|el| el.into_any_element())
         })
     }
 

@@ -138,6 +138,12 @@ The Dock system supports:
 - Layout locking
 - Layout serialization/restoration
 
+Panel trait extensibility:
+
+- `prefix()` / `suffix()`: Elements before/after tab label
+- `title_prefix()` / `title_suffix()`: Elements in title bar when panel is active
+- `PanelEvent::Closed`: Emit to request panel removal
+
 ### Input System
 
 Text input system based on Rope data structure:

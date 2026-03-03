@@ -177,6 +177,44 @@ impl DockItem {
         self
     }
 
+    /// Set a dock-level prefix element.
+    pub fn prefix(
+        self,
+        builder: impl Fn(&mut Window, &mut App) -> AnyElement + 'static,
+        cx: &mut App,
+    ) -> Self {
+        if let Self::Tabs { ref view, .. } = self {
+            view.update(cx, |tab_panel, _cx| {
+                tab_panel.prefix(builder);
+            });
+        }
+        self
+    }
+
+    /// Set a dock-level suffix element.
+    pub fn suffix(
+        self,
+        builder: impl Fn(&mut Window, &mut App) -> AnyElement + 'static,
+        cx: &mut App,
+    ) -> Self {
+        if let Self::Tabs { ref view, .. } = self {
+            view.update(cx, |tab_panel, _cx| {
+                tab_panel.suffix(builder);
+            });
+        }
+        self
+    }
+
+    /// Hide the built-in toolbar ("..." menu and zoom buttons).
+    pub fn hide_toolbar(self, cx: &mut App) -> Self {
+        if let Self::Tabs { ref view, .. } = self {
+            view.update(cx, |tab_panel, _cx| {
+                tab_panel.hide_toolbar();
+            });
+        }
+        self
+    }
+
     /// Create DockItem::Split with given split layout.
     pub fn split(
         axis: Axis,
@@ -1018,7 +1056,7 @@ impl DockArea {
         }
     }
 
-    /// Subscribe zoom event on the panel
+    /// Subscribe to events on the panel
     pub(crate) fn subscribe_panel<P: Panel>(
         &mut self,
         view: &Entity<P>,

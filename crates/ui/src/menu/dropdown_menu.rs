@@ -104,8 +104,14 @@ where
                     Some(menu) => menu,
                     None => {
                         let builder = builder.clone();
+                        let focused = window.focused(cx);
                         let menu = PopupMenu::build(window, cx, move |menu, window, cx| {
-                            builder(menu, window, cx)
+                            let menu = builder(menu, window, cx);
+                            if let Some(handle) = focused.clone() {
+                                menu.action_context(handle)
+                            } else {
+                                menu
+                            }
                         });
                         menu_state.update(cx, |state, _| {
                             state.menu = Some(menu.clone());

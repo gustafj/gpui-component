@@ -43,7 +43,7 @@ pub fn init(cx: &mut App) {
 
     cx.bind_keys(vec![
         KeyBinding::new("shift-escape", ToggleZoom, None),
-        KeyBinding::new("ctrl-w", ClosePanel, None),
+        KeyBinding::new("ctrl-w", ClosePanel::default(), None),
     ]);
 
     cx.activate(true);

@@ -142,7 +142,7 @@ Panel trait extensibility:
 
 - `prefix()` / `suffix()`: Elements before/after tab label
 - `title_prefix()` / `title_suffix()`: Elements in title bar when panel is active
-- `PanelEvent::Closed`: Emit to request panel removal
+- `ClosePanel` action: Dispatch with `entity_id` to close a specific panel, or without to close the active panel
 
 ### Input System
 

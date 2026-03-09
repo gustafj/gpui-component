@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
 use gpui::{
-    Anchor, AnyElement, App, AppContext, Context, DismissEvent, Div, DragMoveEvent, Empty, Entity,
-    EventEmitter, FocusHandle, Focusable, InteractiveElement as _, IntoElement, ParentElement,
-    Pixels, Render, ScrollHandle, SharedString, StatefulInteractiveElement, StyleRefinement,
-    Styled, WeakEntity, Window, div, prelude::FluentBuilder, px, relative, rems,
+    Anchor, AnyElement, App, AppContext, Context, DismissEvent, Div, DragMoveEvent, Empty,
+    Entity, EntityId, EventEmitter, FocusHandle, Focusable, InteractiveElement as _, IntoElement,
+    ParentElement, Pixels, Render, ScrollHandle, SharedString, StatefulInteractiveElement,
+    StyleRefinement, Styled, WeakEntity, Window, div, prelude::FluentBuilder, px, relative, rems,
 };
 use rust_i18n::t;
 
@@ -131,7 +131,7 @@ impl Panel for TabPanel {
     }
 
     fn visible(&self, cx: &App) -> bool {
-        self.visible_panels(cx).next().is_some()
+        self.visible_panels(cx).next().is_some() || self.can_be_empty()
     }
 
     fn dropdown_menu(
@@ -405,9 +405,10 @@ impl TabPanel {
         cx.notify();
     }
 
-    /// Check to remove self from the parent StackPanel, if there is no panel left
+    /// Check to remove self from the parent StackPanel, if there is no panel left.
+    /// When a fallback panel is set, the TabPanel stays alive to show the fallback.
     fn remove_self_if_empty(&self, window: &mut Window, cx: &mut Context<Self>) {
-        if !self.panels.is_empty() {
+        if !self.panels.is_empty() || self.can_be_empty() {
             return;
         }
 
@@ -562,7 +563,7 @@ impl TabPanel {
                                     )
                                     .when(closable, |this| {
                                         this.separator()
-                                            .menu(t!("Dock.Close"), Box::new(ClosePanel))
+                                            .menu(t!("Dock.Close"), Box::new(ClosePanel::default()))
                                     })
                             })
                         }
@@ -1251,19 +1252,39 @@ impl TabPanel {
 
     fn on_action_close_panel(
         &mut self,
-        _: &ClosePanel,
+        action: &ClosePanel,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         if !self.closable(cx) {
             return;
         }
-        if let Some(panel) = self.active_panel(cx) {
+
+        let panel = if let Some(target_id) = action.entity_id {
+            // Targeted close: find the panel in our list by entity ID.
+            let target_entity_id = EntityId::from(target_id);
+            let found = self
+                .panels
+                .iter()
+                .find(|p| p.panel_id(cx) == target_entity_id)
+                .cloned();
+            if found.is_none() {
+                // Not in our panels — let other TabPanels handle it.
+                cx.propagate();
+                return;
+            }
+            found
+        } else {
+            // Untargeted close: close the active panel.
+            self.active_panel(cx)
+        };
+
+        if let Some(panel) = panel {
             self.remove_panel(panel, window, cx);
         }
 
         // Remove self from the parent DockArea.
-        // This is ensure to remove from Tiles
+        // This ensures removal from Tiles.
         if self.panels.is_empty() && self.in_tiles {
             let tab_panel = Arc::new(cx.entity());
             window.defer(cx, {

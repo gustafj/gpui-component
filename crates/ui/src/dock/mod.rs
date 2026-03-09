@@ -8,10 +8,12 @@ mod tiles;
 
 use anyhow::Result;
 use gpui::{
-    AnyElement, AnyView, App, AppContext, Axis, Bounds, Context, Edges, Entity, EntityId,
+    Action, AnyElement, AnyView, App, AppContext, Axis, Bounds, Context, Edges, Entity, EntityId,
     EventEmitter, InteractiveElement as _, IntoElement, ParentElement as _, Pixels, Render,
     SharedString, Styled, Subscription, WeakEntity, Window, actions, div, prelude::FluentBuilder,
 };
+use schemars::JsonSchema;
+use serde::Deserialize;
 use std::sync::Arc;
 
 pub use dock::*;
@@ -27,7 +29,17 @@ pub(crate) fn init(cx: &mut App) {
     PanelRegistry::init(cx);
 }
 
-actions!(dock, [ToggleZoom, ClosePanel]);
+actions!(dock, [ToggleZoom]);
+
+/// Action to close a panel. When `entity_id` is `Some`, targets a specific
+/// panel by its entity ID. When `None`, closes the active panel.
+#[derive(Clone, Default, PartialEq, Deserialize, JsonSchema, Action)]
+#[action(namespace = dock)]
+#[serde(deny_unknown_fields)]
+pub struct ClosePanel {
+    #[serde(default)]
+    pub entity_id: Option<u64>,
+}
 
 pub enum DockEvent {
     /// The layout of the dock has changed, subscribers this to save the layout.
